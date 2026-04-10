@@ -201,7 +201,7 @@ public:
 	int				mNumArguments;
 	const Ident	*	mArguments[32];
 	MacroDict	*	mScope;
-	bool			mVariadic;
+	bool			mVariadic, mAssign;
 };
 
 typedef Macro* MacroPtr;

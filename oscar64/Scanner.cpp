@@ -181,7 +181,7 @@ const char* TokenNames[] =
 
 
 Macro::Macro(const Ident* ident, MacroDict * scope)
-	: mIdent(ident), mString(nullptr), mBuffer(nullptr), mSize(0), mNumArguments(-1), mScope(scope), mVariadic(false)
+	: mIdent(ident), mString(nullptr), mBuffer(nullptr), mSize(0), mNumArguments(-1), mScope(scope), mVariadic(false), mAssign(false)
 {
 
 }
@@ -941,6 +941,7 @@ void Scanner::NextPreToken(void)
 				char	buffer[20];
 				sprintf_s(buffer, "%d", int(v));
 				macro->SetString(buffer);
+				macro->mAssign = true;
 				mPreprocessorMode = false;
 				if (mToken != TK_EOL)
 					mErrors->Error(mLocation, ERRR_PREPROCESSOR, "End of line expected");
@@ -1045,6 +1046,59 @@ void Scanner::NextPreToken(void)
 		}
 		else if (mToken == TK_IDENT)
 		{
+			if (mTokenChar == '#' && mLine[mOffset++] == '#')
+			{
+				char	tkistr[1024];
+
+				Macro* def = nullptr;
+				if (mDefineArguments)
+					def = mDefineArguments->Lookup(mTokenIdent);
+				if (!def)
+				{
+					def = mDefines->Lookup(mTokenIdent);
+					if (def && !def->mAssign)
+						def = nullptr;
+				}
+
+				if (def)
+					strcpy_s(tkistr, def->mString);
+				else
+					strcpy_s(tkistr, mTokenIdent->mString);
+
+				size_t i = strlen(tkistr);
+				while (i > 0 && tkistr[i - 1] == ' ') i--;
+				tkistr[i] = 0;
+				
+				do {
+					char	tkprep[200];
+					int		n = 0;
+					while (NextChar() && IsAlphaNumeric(mTokenChar))
+						tkprep[n++] = mTokenChar;
+					tkprep[n] = 0;
+					mTokenIdent = Ident::Unique(tkprep);
+					Macro* def = nullptr;
+					if (mDefineArguments)
+						def = mDefineArguments->Lookup(mTokenIdent);
+					if (!def)
+					{
+						def = mDefines->Lookup(mTokenIdent);
+						if (def && !def->mAssign)
+							def = nullptr;
+					}
+
+					if (def)
+						strcat_s(tkistr, def->mString);
+					else
+						strcat_s(tkistr, mTokenIdent->mString);
+
+					size_t i = strlen(tkistr);
+					while (i > 0 && tkistr[i - 1] == ' ') i--;
+					tkistr[i] = 0;
+
+				} while (mTokenChar == '#' && mLine[mOffset++] == '#');
+				mTokenIdent = Ident::Unique(tkistr);
+			}
+
 			Macro* def = nullptr;
 			if (mDefineArguments)
 				def = mDefineArguments->Lookup(mTokenIdent);
@@ -1274,7 +1328,12 @@ void Scanner::NextSkipRawToken(void)
 				}
 				tkprep[n] = 0;
 
-				if (!strcmp(tkprep, "define"))
+				if (n == 0 && mTokenChar == '#')
+				{
+					NextChar();
+					mToken = TK_PREP_CONCAT;
+				}
+				else if (!strcmp(tkprep, "define"))
 					mToken = TK_PREP_DEFINE;
 				else if (!strcmp(tkprep, "error"))
 					mToken = TK_PREP_ERROR;
@@ -1666,7 +1725,12 @@ void Scanner::NextRawToken(void)
 				}
 				tkprep[n] = 0;
 
-				if (!strcmp(tkprep, "define"))
+				if (n == 0 && mTokenChar == '#')
+				{
+					NextChar();
+					mToken = TK_PREP_CONCAT;
+				}
+				else if (!strcmp(tkprep, "define"))
 					mToken = TK_PREP_DEFINE;
 				else if (!strcmp(tkprep, "error"))
 					mToken = TK_PREP_ERROR;
