@@ -39058,6 +39058,41 @@ bool NativeCodeBasicBlock::Move16BitShiftUp(int at)
 	return false;
 }
 
+// [at + 0] ASL zp
+// [at + 1] ROL zp
+bool NativeCodeBasicBlock::Move16BitShiftDown(int at)
+{
+	int i = at + 2;
+	while (i < mIns.Size())
+	{
+		if (mIns[i + 0].mType == ASMIT_LDA && mIns[i + 0].mMode == ASMIM_ZERO_PAGE && (mIns[i + 0].mAddress == mIns[at + 1].mAddress || mIns[i + 0].mAddress == mIns[at + 0].mAddress))
+		{
+			if (mIns[i + 0].mLive & (LIVE_CPU_REG_C | LIVE_CPU_REG_Z | LIVE_MEM)) return false;
+
+			int live = mIns[i + 0].mLive | LIVE_CPU_REG_A;
+
+			mIns.Insert(i + 1, mIns[at]);
+			mIns.Insert(i + 2, mIns[at + 1]);
+
+			if (mIns[i].mAddress == mIns[at + 0].mAddress)
+				mIns[i + 1].mMode = ASMIM_IMPLIED;
+			else
+				mIns[i + 2].mMode = ASMIM_IMPLIED;
+
+			mIns[i + 1].mLive |= live;
+			mIns[i + 2].mLive |= live;
+			mIns.Remove(at, 2);
+			return true;
+		}
+
+		if (mIns[i].ReferencesZeroPage(mIns[at + 0].mAddress) || mIns[i].ReferencesZeroPage(mIns[at + 1].mAddress))
+			return false;
+		i++;
+	}
+
+	return false;
+}
+
 
 // Assume [at    ] = SHIFT
 // Assume [at + 1] = ORA
@@ -40252,9 +40287,24 @@ bool NativeCodeBasicBlock::ReverseBitfieldForwarding(void)
 	{
 		mVisited = true;
 
-		int		aused = 0xff;
-		bool	cused = 0;
-	
+		bool	cused = mExitRequiredRegs[CPU_REG_C], zused = mExitRequiredRegs[CPU_REG_Z];
+
+		int		aused = 0x00;
+		
+		if (mTrueJump && mTrueJump->mEntryRequiredRegs[CPU_REG_A])
+			aused = 0xff;
+
+		if (mFalseJump)
+		{
+			if (mBranch == ASMIT_BCC || mBranch == ASMIT_BCS)
+				cused = true;
+			else if (mBranch == ASMIT_BEQ || mBranch == ASMIT_BNE || mBranch == ASMIT_BPL || mBranch == ASMIT_BMI)
+				zused = true;
+
+			if (mFalseJump->mEntryRequiredRegs[CPU_REG_A])
+				aused = 0xff;
+		}
+
 		for (int i = mIns.Size() - 1; i >= 0; i--)
 		{
 			NativeCodeInstruction& ins(mIns[i]);
@@ -40264,49 +40314,115 @@ bool NativeCodeBasicBlock::ReverseBitfieldForwarding(void)
 			case ASMIT_TYA:
 			case ASMIT_LDA:
 				aused = 0;
+				zused = false;
 				break;
 			case ASMIT_CLC:
 			case ASMIT_SEC:
 				cused = false;
 				break;
-			case ASMIT_ADC:
 			case ASMIT_SBC:
+				if (!cused && !zused && ins.mMode == ASMIM_IMMEDIATE && i > 0 && mIns[i - 1].mType == ASMIT_SEC)
+				{
+					char um = BinMask(aused);
+					if (ins.mAddress & um)
+						aused = 0xff;
+					else if (ins.mAddress)
+					{
+						ins.mAddress = 0x00;
+						changed = true;
+					}
+				}
+				else
+					aused = 0xff;
+				cused = true;
+				zused = false;
+				break;
+			case ASMIT_ADC:
+				if (!cused && !zused && ins.mMode == ASMIM_IMMEDIATE && i > 0 && mIns[i - 1].mType == ASMIT_CLC)
+				{
+					char um = BinMask(aused);
+					if (ins.mAddress & um)
+						aused = 0xff;
+					else if (ins.mAddress)
+					{
+						ins.mAddress = 0x00;
+						changed = true;
+					}
+				}
+				else
+					aused = 0xff;
+				cused = true;
+				zused = false;
+				break;
+
 			case ASMIT_JSR:
 				cused = true;
+				zused = false;
 				aused = 0xff;
 				break;
 			case ASMIT_CMP:
 				cused = false;
+				zused = false;
 				aused = 0xff;
 				break;
+			case ASMIT_EOR:
+				if (zused)
+					aused = 0xff;
+				else if (ins.mMode == ASMIM_IMMEDIATE)
+				{
+					int naddr = ins.mAddress & aused;
+					if (ins.mAddress != naddr)
+					{
+						ins.mAddress = naddr;
+						changed = true;
+					}
+				}
+				zused = false;
+				break;
+
 			case ASMIT_STA:
 			case ASMIT_TAX:
 			case ASMIT_TAY:
-			case ASMIT_EOR:
 				aused = 0xff;
+				zused = false;
 				break;
 			case ASMIT_LSR:
 				if (ins.mMode == ASMIM_IMPLIED)
 				{
-					aused = (aused << 1) & 0xff;
+					if (zused)
+						aused = 0xfe;
+					else
+						aused = (aused << 1) & 0xff;
 					if (cused)
 						aused |= 1;
 				}
 				cused = false;
+				zused = false;
 				break;
 			case ASMIT_ASL:
 				if (ins.mMode == ASMIM_IMPLIED)
 				{
-					aused >>= 1;
+					if (zused)
+						aused = 0x7f;
+					else
+						aused >>= 1;
 					if (cused)
 						aused |= 0x80;
 				}
 				cused = false;
+				zused = false;
 				break;
 			case ASMIT_ROR:
 				if (ins.mMode == ASMIM_IMPLIED)
 				{
-					if (aused & 0x80)
+					if (zused)
+					{
+						aused = 0xfe;
+						if (cused)
+							aused |= 1;
+						cused = true;
+					}
+					else if (aused & 0x80)
 					{
 						aused = (aused << 1) & 0xff;
 						if (cused)
@@ -40320,15 +40436,24 @@ bool NativeCodeBasicBlock::ReverseBitfieldForwarding(void)
 						if (cused)
 							aused |= 1;
 						cused = false;
+						changed = true;
 					}
 				}
 				else
 					cused = true;
+				zused = false;
 				break;
 			case ASMIT_ROL:
 				if (ins.mMode == ASMIM_IMPLIED)
 				{
-					if (aused & 0x01)
+					if (zused)
+					{
+						aused = 0x7f;
+						if (cused)
+							aused |= 0x80;
+						cused = true;
+					}
+					else if (aused & 0x01)
 					{
 						aused >>= 1;
 						if (cused)
@@ -40342,22 +40467,41 @@ bool NativeCodeBasicBlock::ReverseBitfieldForwarding(void)
 						if (cused)
 							aused |= 0x80;
 						cused = false;
+						changed = true;
 					}
 				}
 				else
 					cused = true;
+				zused = false;
 				break;
 			case ASMIT_ORA:
-				if (ins.mMode == ASMIM_IMMEDIATE)
-					aused &= ~ins.mAddress;
-				else
+				if (zused)
 					aused = 0xff;
+				else if (ins.mMode == ASMIM_IMMEDIATE)
+				{
+					int naddr = ins.mAddress & aused;
+					if (ins.mAddress != naddr)
+					{
+						ins.mAddress = naddr;
+						changed = true;
+					}
+					aused &= ~ins.mAddress;
+				}
 				break;
 			case ASMIT_AND:
-				if (ins.mMode == ASMIM_IMMEDIATE)
-					aused &= ins.mAddress;
-				else
+				if (zused)
 					aused = 0xff;
+				else if (ins.mMode == ASMIM_IMMEDIATE)
+				{
+					int naddr = ins.mAddress & aused;
+					if (ins.mAddress != naddr)
+					{
+						ins.mAddress = naddr;
+						changed = true;
+					}
+					aused &= ins.mAddress;
+				}
+				zused = false;
 				break;
 			}
 		}
@@ -40670,11 +40814,15 @@ bool NativeCodeBasicBlock::OffsetValueForwarding(const ValueNumberingDataSet& da
 					else if (d == 1 && !(ins.mLive & (LIVE_CPU_REG_Z | LIVE_CPU_REG_C)))
 					{
 						ins.mType = ASMIT_INC;
+						if (ins.mLive & LIVE_CPU_REG_A)
+							mIns.Insert(i + 1, NativeCodeInstruction(ins.mIns, ASMIT_LDA, ins));
 						changed = true;
 					}
 					else if (d == -1 && !(ins.mLive & (LIVE_CPU_REG_Z | LIVE_CPU_REG_C)))
 					{
 						ins.mType = ASMIT_DEC;
+						if (ins.mLive & LIVE_CPU_REG_A)
+							mIns.Insert(i + 1, NativeCodeInstruction(ins.mIns, ASMIT_LDA, ins));
 						changed = true;
 					}
 				}
@@ -52222,6 +52370,27 @@ bool NativeCodeBasicBlock::PeepHoleOptimizerShuffle(int pass)
 
 	CheckLive();
 
+	for (int i = 0; i + 2 < mIns.Size(); i++)
+	{
+		if (mIns[i + 0].mType == ASMIT_ASL && mIns[i + 0].mMode == ASMIM_ZERO_PAGE &&
+			mIns[i + 1].mType == ASMIT_ROL && mIns[i + 1].mMode == ASMIM_ZERO_PAGE &&
+			mIns[i + 0].mAddress != mIns[i + 1].mAddress && !(mIns[i + 1].mLive & LIVE_CPU_REG_C))
+		{
+			if (Move16BitShiftDown(i))
+				changed = true;
+		}
+		else if (
+			mIns[i + 0].mType == ASMIT_LSR && mIns[i + 0].mMode == ASMIM_ZERO_PAGE &&
+			mIns[i + 1].mType == ASMIT_ROR && mIns[i + 1].mMode == ASMIM_ZERO_PAGE &&
+			mIns[i + 0].mAddress != mIns[i + 1].mAddress && !(mIns[i + 1].mLive & LIVE_CPU_REG_C))
+		{
+			if (Move16BitShiftDown(i))
+				changed = true;
+		}
+	}
+
+	CheckLive();
+
 #if 1
 	for (int i = 3; i + 2 < mIns.Size(); i++)
 	{
@@ -57284,6 +57453,21 @@ bool NativeCodeBasicBlock::PeepHoleOptimizerIterate5(int i, int pass)
 		return true;
 	}
 
+	if (
+		mIns[i + 0].mType == ASMIT_CLC &&
+		mIns[i + 1].mType == ASMIT_LDA && HasAsmInstructionMode(ASMIT_LDX, mIns[i + 1].mMode) &&
+		mIns[i + 2].mType == ASMIT_ADC && mIns[i + 2].mMode == ASMIM_IMMEDIATE && mIns[i + 2].mAddress == 1 &&
+		mIns[i + 3].mType == ASMIT_CMP && HasAsmInstructionMode(ASMIT_CPX, mIns[i + 3].mMode) &&
+		mIns[i + 4].mType == ASMIT_TAX && !(mIns[i + 4].mLive & LIVE_CPU_REG_A))
+	{
+		mIns[i + 0].mType = ASMIT_NOP;
+		mIns[i + 1].mType = ASMIT_LDX; mIns[i + 1].mLive |= LIVE_CPU_REG_X;
+		mIns[i + 2].mType = ASMIT_INX; mIns[i + 2].mMode = ASMIM_IMPLIED; mIns[i + 2].mLive |= LIVE_CPU_REG_X;
+		mIns[i + 3].mType = ASMIT_CPX; mIns[i + 3].mLive |= LIVE_CPU_REG_X;
+		mIns[i + 4].mType = ASMIT_NOP;
+		return true;
+	}
+
 	return false;
 }
 
@@ -61893,7 +62077,7 @@ void NativeCodeProcedure::Compile(InterCodeProcedure* proc)
 		
 	mInterProc->mLinkerObject->mNativeProc = this;
 
-	CheckFunc = !strcmp(mIdent->mString, "cuboids_redraw");
+	CheckFunc = !strcmp(mIdent->mString, "cuboids_init");
 
 	int	nblocks = proc->mBlocks.Size();
 	tblocks = new NativeCodeBasicBlock * [nblocks];

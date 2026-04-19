@@ -19216,6 +19216,7 @@ void InterCodeBasicBlock::EliminateDoubleLoopCounter(void)
 					lc.mInit = nullptr;
 					lc.mCmp = nullptr;
 					lc.mReferenced = false;
+					lc.mEnd = -1;
 
 					if (ins->mCode == IC_BINARY_OPERATOR && ins->mOperator == IA_ADD && IsIntegerType(ins->mDst.mType))
 					{
@@ -19327,18 +19328,16 @@ void InterCodeBasicBlock::EliminateDoubleLoopCounter(void)
 							if (j < lcs.Size())
 							{
 //								printf("Found Same %s : %d-%d\n", mProc->mIdent->mString, i, j);
-								int ki = mInstructions.IndexOf(lcs[i].mInc);
-								int kj = mInstructions.IndexOf(lcs[j].mInc);
+								int ki = eblock->mInstructions.IndexOf(lcs[i].mInc);
+								int kj = eblock->mInstructions.IndexOf(lcs[j].mInc);
 								int tmpi = lcs[i].mInc->mDst.mTemp;
 								int tmpj = lcs[j].mInc->mDst.mTemp;
 
-								if (ki < kj && !IsTempReferencedInRange(ki + 1, kj, tmpi))
+								if (ki < kj && !eblock->IsTempReferencedInRange(ki + 1, kj, tmpi))
 								{
-									lcs[i].mInc->mCode = IC_NONE; lcs[i].mInc->mNumOperands = 0; lcs[i].mInc->mDst.mTemp = -1;
 								}
-								else if (kj < ki && !IsTempReferencedInRange(kj + 1, ki, tmpj))
+								else if (kj < ki && !eblock->IsTempReferencedInRange(kj + 1, ki, tmpj))
 								{
-									lcs[j].mInc->mCode = IC_NONE; lcs[j].mInc->mNumOperands = 0; lcs[j].mInc->mDst.mTemp = -1;
 								}
 								else
 								{
@@ -19346,16 +19345,36 @@ void InterCodeBasicBlock::EliminateDoubleLoopCounter(void)
 									continue;
 								}
 
-								if (lcs[i].mCmp)
+								if (lcs[i].mInc->mDst.mType > lcs[j].mInc->mDst.mType || 
+									lcs[i].mInc->mDst.mType == lcs[j].mInc->mDst.mType && lcs[i].mCmp)
 								{
-									for (int k = 0; k < mInstructions.Size(); k++)
-										mInstructions[k]->ReplaceTemp(tmpj, tmpi);
+									lcs[j].mInc->mCode = IC_NONE; lcs[j].mInc->mNumOperands = 0; lcs[j].mInc->mDst.mTemp = -1;
+									for (int bi = 0; bi < body.Size(); bi++)
+									{
+										InterCodeBasicBlock* block = body[bi];
+										for (int k = 0; k < block->mInstructions.Size(); k++)
+											block->mInstructions[k]->ReplaceTemp(tmpj, tmpi);
+									}
 									lcs[j].mReferenced = false;
 								}
 								else
 								{
-									for (int k = 0; k < mInstructions.Size(); k++)
-										mInstructions[k]->ReplaceTemp(tmpi, tmpj);
+									lcs[i].mInc->mCode = IC_NONE; lcs[i].mInc->mNumOperands = 0; lcs[i].mInc->mDst.mTemp = -1;
+
+									for (int bi = 0; bi < body.Size(); bi++)
+									{
+										InterCodeBasicBlock* block = body[bi];
+										for (int k = 0; k < block->mInstructions.Size(); k++)
+											block->mInstructions[k]->ReplaceTemp(tmpi, tmpj);
+									}
+
+									if (lcs[i].mCmp)
+									{
+										lcs[j].mCmp = lcs[i].mCmp;
+										lcs[j].mEnd = lcs[i].mEnd;
+										lcs[i].mCmp = nullptr;
+									}
+
 									lcs[i].mReferenced = false;
 								}
 							}
@@ -19385,6 +19404,7 @@ void InterCodeBasicBlock::EliminateDoubleLoopCounter(void)
 							loop = (end - start) / step;
 					}
 
+//					printf("Loop %lld, match %d\n", loop, k);
 #if 0
 					for (int i = 0; i < lcs.Size(); i++)
 					{
@@ -27750,7 +27770,7 @@ void InterCodeProcedure::Close(void)
 {
 	GrowingTypeArray	tstack(IT_NONE);
 	
-	CheckFunc = !strcmp(mIdent->mString, "strtol");
+	CheckFunc = !strcmp(mIdent->mString, "cuboids_init");
 	CheckCase = false;
 
 	mEntryBlock = mBlocks[0];
