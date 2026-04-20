@@ -4097,6 +4097,12 @@ InterCodeGenerator::ExValue InterCodeGenerator::TranslateExpression(Declaration*
 
 				InterInstruction* fins = nullptr;
 
+				if (ftype->mFlags & DTF_FUNC_DELETED)
+				{
+					mErrors->Error(exp->mLocation, ERRR_CALLING_DELETED_FUNCTION, "Calling deleted function", ftype->mIdent);
+				}
+
+
 				if (ftype->mFlags & DTF_FASTCALL)
 				{
 
