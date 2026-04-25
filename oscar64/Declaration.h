@@ -394,6 +394,7 @@ public:
 	Declaration* ConstCast(Declaration* ntype);
 	bool IsNullConst(void) const;
 	bool IsAuto(void) const;
+	bool HasConstMember(void) const;
 
 	DecType ValueType(void) const;
 

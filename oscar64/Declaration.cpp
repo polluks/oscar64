@@ -1707,6 +1707,26 @@ bool Declaration::IsAuto(void) const
 	return (mType == DT_TYPE_AUTO || IsReference() && mBase->mType == DT_TYPE_AUTO);
 }
 
+bool Declaration::HasConstMember(void) const
+{
+	if (mFlags & DTF_CONST)
+		return true;
+
+	if (mType == DT_TYPE_STRUCT)
+	{
+		Declaration* dec = mParams;
+		while (dec)
+		{
+			if (dec->mBase->HasConstMember())
+				return true;
+			dec = dec->mNext;
+		}
+	}
+
+	return false;
+}
+
+
 Declaration* Declaration::DeduceAuto(Declaration * dec)
 {
 	if (mType == DT_TYPE_AUTO || IsReference() && mBase->mType == DT_TYPE_AUTO)

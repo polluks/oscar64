@@ -2649,6 +2649,8 @@ InterCodeGenerator::ExValue InterCodeGenerator::TranslateExpression(Declaration*
 
 			if (exp->mType != EX_INITIALIZATION && (vl.mType->mFlags & DTF_CONST))
 				mErrors->Error(exp->mLocation, EERR_CONST_ASSIGN, "Cannot assign to const type");
+			else if (exp->mType != EX_INITIALIZATION && !vl.mType->mCopyAssignment && vl.mType->HasConstMember())
+				mErrors->Error(exp->mLocation, EERR_CONST_ASSIGN, "Cannot assign to item with const member");
 
 			if (exp->mType == EX_INITIALIZATION && exp->mRight->mType == EX_CONSTANT && exp->mRight->mDecValue && exp->mRight->mDecValue->mLinkerObject)
 			{
