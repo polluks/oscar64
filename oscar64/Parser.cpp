@@ -1075,9 +1075,13 @@ Declaration* Parser::ParseBaseTypeDeclaration(uint64 flags, bool qualified, Decl
 		{
 			dec->mIdent = mScanner->mTokenIdent;
 			dec->mQualIdent = mScope->Mangle(dec->mIdent);
-			
-			odec = mScope->Insert(dec->mIdent, dec);
+
 			mScanner->NextToken();
+			if (mScanner->mToken != TK_OPEN_BRACE)
+				odec = mScope->mParent->Lookup(dec->mIdent);
+			if (!odec)
+				odec = mScope->Insert(dec->mIdent, dec);
+
 		}
 
 		if (mCompilerOptions & COPT_CPLUSPLUS)
