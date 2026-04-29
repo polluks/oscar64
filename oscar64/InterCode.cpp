@@ -17445,10 +17445,13 @@ InterCodeBasicBlock* InterCodeBasicBlock::CheckIsConstBranch(const GrowingInstru
 			if (ins->mDst.mTemp >= 0)
 			{
 				int k = 0;
-				while (k < tins.Size() && tins[k]->mDst.mTemp != ins->mDst.mTemp)
-					k++;
-				if (k < tins.Size())
-					tins.Remove(k);
+				while (k < tins.Size())
+				{
+					if (tins[k]->ReferencesTemp(ins->mDst.mTemp))
+						tins.Remove(k);
+					else
+						k++;
+				}
 			}
 
 			if (nins)
@@ -17692,7 +17695,6 @@ bool InterCodeBasicBlock::ShortcutConstBranches(const GrowingInstructionPtrArray
 				tins.Push(nins);
 		}
 
-		
 		if (mTrueJump)
 		{
 			InterCodeBasicBlock* tblock = mTrueJump->CheckIsConstBranch(tins);
@@ -23463,6 +23465,13 @@ bool InterCodeBasicBlock::PeepholeReplaceOptimization(const GrowingVariableArray
 			}
 		}
 
+		if (mInstructions[i]->mCode == IC_RELATIONAL_OPERATOR && mInstructions[i]->mOperator == IA_CMPGEU && mInstructions[i]->mSrc[0].mTemp < 0 && IsIntegerType(mInstructions[i]->mSrc[0].mType) && mInstructions[i]->mSrc[0].mIntConst == 1)
+		{
+			mInstructions[i]->mOperator = IA_CMPNE;
+			mInstructions[i]->mSrc[0].mIntConst = 0;
+			changed = true;
+		}
+
 		if (i + 1 < mInstructions.Size())
 		{
 #if 1
@@ -27770,7 +27779,7 @@ void InterCodeProcedure::Close(void)
 {
 	GrowingTypeArray	tstack(IT_NONE);
 	
-	CheckFunc = !strcmp(mIdent->mString, "cuboids_init");
+	CheckFunc = !strcmp(mIdent->mString, "test");
 	CheckCase = false;
 
 	mEntryBlock = mBlocks[0];
