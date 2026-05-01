@@ -562,6 +562,9 @@ void SourceFile::ReadCharPad(Errors* errors, const Location& location, SourceFil
 			fread(&fd, 1, 1, mFile);
 			mMemData[i] = fd << 4;
 		}
+
+		if (ctmHeader8.mColorMethod == 0)
+			return;
 	}
 	else
 	{
