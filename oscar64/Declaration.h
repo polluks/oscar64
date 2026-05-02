@@ -339,8 +339,8 @@ public:
 	int64 MaxInteger(void) const;
 	int64 CastInteger(int64 v) const;
 
-	GrowingArray<Declaration*>	mCallers, mCalled, mFriends;
-	GrowingArray<Expression*>	mReferences;
+	GrowingArray<Declaration*>		mCallers, mCalled, mFriends, mMayCall;
+	ExpandingArray<Expression*>		mReferences;
 
 	bool CanAssign(const Declaration* fromType) const;
 	bool IsSame(const Declaration* dec) const;

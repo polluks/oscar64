@@ -20782,6 +20782,44 @@ bool NativeCodeBasicBlock::SimplifyDiamond(NativeCodeProcedure* proc)
 
 						changed = true;
 					}
+					else if (cs == 3 &&
+						!cblock->mEntryRequiredRegs[CPU_REG_A] && !eblock->mEntryRequiredRegs[CPU_REG_A] &&
+						cblock->mIns[0].mType == ASMIT_TYA &&
+						cblock->mIns[1].IsLogic() && cblock->mIns[1].mMode == ASMIM_IMMEDIATE &&
+						cblock->mIns[2].mType == ASMIT_TAY && !(cblock->mIns[2].mLive & LIVE_CPU_REG_A))
+					{
+						int k = mIns.Size() - 1;
+						while (k >= 2 && !mIns[k].ReferencesYReg())
+							k--;
+						if (k >= 2)
+						{
+							if (mIns[k - 2].mType == ASMIT_TYA &&
+								mIns[k - 1].IsLogic() && mIns[k - 1].mMode == ASMIM_IMMEDIATE &&
+								mIns[k - 0].mType == ASMIT_TAY && !(mIns[k].mLive & LIVE_CPU_REG_A))
+							{
+								mIns[k - 2].mLive |= mIns.Last().mLive;
+								mIns[k - 1].mLive |= mIns.Last().mLive;
+								mIns[k - 0].mLive |= mIns.Last().mLive;
+
+								mIns.Push(mIns[k - 2]);
+								mIns.Push(mIns[k - 1]);
+
+								cblock->mIns.Remove(0);
+								cblock->mIns.Remove(1);
+
+								eblock->mIns.Insert(0, mIns[k]);
+
+								mIns.Remove(k - 2, 3);
+
+								eblock->mEntryRequiredRegs += CPU_REG_Y;
+								cblock->mEntryRequiredRegs += CPU_REG_Y;
+								mExitRequiredRegs += CPU_REG_Y;
+								cblock->mExitRequiredRegs += CPU_REG_Y;
+
+								changed = true;
+							}
+						}
+					}
 				}
 			}
 		}
@@ -41515,6 +41553,44 @@ bool NativeCodeBasicBlock::BitFieldForwarding(const NativeRegisterDataSet& data)
 					}
 
 					mIns[i + 2].mType = ASMIT_TXA; mIns[i + 2].mMode = ASMIM_IMPLIED;
+				}
+			}
+
+			if (i + 2 < mIns.Size() &&
+				mIns[i + 0].mType == ASMIT_TXA && mIns[i + 1].mType == ASMIT_EOR && mIns[i + 1].mMode == ASMIM_IMMEDIATE && mIns[i + 2].mType == ASMIT_TAX)
+			{
+				if (mIns[i + 1].mAddress == 1 && (mNDataSet[CPU_REG_X].mMask & 1))
+				{
+					if (mNDataSet[CPU_REG_X].mValue & 1)
+					{
+						mIns[i + 0].mType = ASMIT_DEX; mIns[i + 0].mLive |= LIVE_CPU_REG_X;
+					}
+					else
+					{
+						mIns[i + 0].mType = ASMIT_INX; mIns[i + 0].mLive |= LIVE_CPU_REG_X;
+					}
+
+					mIns[i + 1].mType = ASMIT_NOP; mIns[i + 1].mMode = ASMIM_IMPLIED;
+					mIns[i + 2].mType = ASMIT_TXA; mIns[i + 2].mMode = ASMIM_IMPLIED;
+				}
+			}
+
+			if (i + 2 < mIns.Size() &&
+				mIns[i + 0].mType == ASMIT_TYA && mIns[i + 1].mType == ASMIT_EOR && mIns[i + 1].mMode == ASMIM_IMMEDIATE && mIns[i + 2].mType == ASMIT_TAY)
+			{
+				if (mIns[i + 1].mAddress == 1 && (mNDataSet[CPU_REG_Y].mMask & 1))
+				{
+					if (mNDataSet[CPU_REG_Y].mValue & 1)
+					{
+						mIns[i + 0].mType = ASMIT_DEY; mIns[i + 0].mLive |= LIVE_CPU_REG_Y;
+					}
+					else
+					{
+						mIns[i + 0].mType = ASMIT_INY; mIns[i + 0].mLive |= LIVE_CPU_REG_Y;
+					}
+
+					mIns[i + 1].mType = ASMIT_NOP; mIns[i + 1].mMode = ASMIM_IMPLIED;
+					mIns[i + 2].mType = ASMIT_TYA; mIns[i + 2].mMode = ASMIM_IMPLIED;
 				}
 			}
 #endif

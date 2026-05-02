@@ -412,6 +412,9 @@ void GlobalAnalyzer::CheckFastcall(Declaration* procDec, bool head)
 						int n2 = vf->mBase->mFastCallSize2;
 						if (n2 > nbase2)
 							nbase2 = n2;
+
+						if (!procDec->mMayCall.Contains(vf))
+							procDec->mMayCall.Push(vf);
 					}
 
 				}

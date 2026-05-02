@@ -6475,6 +6475,13 @@ InterCodeProcedure* InterCodeGenerator::TranslateProcedure(InterCodeModule * mod
 		}
 #endif
 
+		for (int i = 0; i < dec->mMayCall.Size(); i++)
+		{
+			if (!dec->mMayCall[i]->mLinkerObject)
+				this->TranslateProcedure(mod, dec->mMayCall[i]->mValue, dec->mMayCall[i]);
+			proc->AddCalledFunction(mod->mProcedures[dec->mMayCall[i]->mVarIndex]);
+		}
+
 		DestructStack* destack = nullptr;
 		GotoNode* gotos = nullptr;
 
@@ -6525,7 +6532,7 @@ InterCodeProcedure* InterCodeGenerator::TranslateProcedure(InterCodeModule * mod
 	return proc;
 }
 
-void InterCodeGenerator::CompleteMainInit(void)
+void InterCodeGenerator::CompleteMainInit(InterCodeModule* mod)
 {
 	if (mErrors->mErrorCount == 0 && mMainInitBlock)
 	{

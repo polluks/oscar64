@@ -1411,14 +1411,13 @@ Declaration::Declaration(const Location& loc, DecType type)
 	mVectorConstructor(nullptr), mVectorDestructor(nullptr), mVectorCopyConstructor(nullptr), mVectorCopyAssignment(nullptr),
 	mVectorMoveConstructor(nullptr), mVectorMoveAssignment(nullptr),
 	mVTable(nullptr), mTemplate(nullptr), mForwardParam(nullptr), mForwardCall(nullptr),
-	mVarIndex(-1), mLinkerObject(nullptr), mCallers(nullptr), mCalled(nullptr), mAlignment(1), mFriends(nullptr),
+	mVarIndex(-1), mLinkerObject(nullptr), mAlignment(1), mCallers(nullptr), mCalled(nullptr), mFriends(nullptr), mMayCall(nullptr),
 	mInteger(0), mNumber(0), mMinValue(-0x80000000LL), mMaxValue(0x7fffffffLL), 
 	mFastCallBase(0), mFastCallSize(0), 
 	mFastCallBase2(0), mFastCallSize2(0), mVariadicSize(0),
 	mStride(0), mStripe(1),
 	mCompilerOptions(0), mUseCount(0), mTokens(nullptr), mParser(nullptr),
-	mShift(0), mBits(0), mOptFlags(0), mInlayRegion(nullptr),
-	mReferences(nullptr)
+	mShift(0), mBits(0), mOptFlags(0), mInlayRegion(nullptr)
 {
 	static uint32 gUID = 0;
 	mUID = gUID++;

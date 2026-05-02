@@ -1021,7 +1021,7 @@ bool Compiler::GenerateCode(void)
 		}
 	}
 
-	mInterCodeGenerator->CompleteMainInit();
+	mInterCodeGenerator->CompleteMainInit(mInterCodeModule);
 
 	if (mErrors->mErrorCount != 0)
 		return false;

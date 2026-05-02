@@ -16267,18 +16267,24 @@ bool InterCodeBasicBlock::PreventsCallerStaticStack(void)
 			if (ins->mCode == IC_CALL || ins->mCode == IC_CALL_NATIVE)
 			{
 				if (ins->mSrc[0].mTemp >= 0 || !ins->mSrc[0].mLinkerObject)
-					return false;
+				{
+					for (int j = 0; j < mProc->mCalledFunctions.Size(); j++)
+					{
+						if (!(mProc->mCalledFunctions[j]->mLinkerObject && (mProc->mCalledFunctions[j]->mLinkerObject->mFlags & LOBJF_STATIC_STACK)))
+							return true;
+					}
+				}
 				else if (ins->mSrc[0].mLinkerObject == mProc->mLinkerObject)
 					; // Simple recursion
 				else if (!(ins->mSrc[0].mLinkerObject->mFlags & LOBJF_STATIC_STACK))
-					return false;
+					return true;
 			}
 			else if (ins->mCode == IC_DISPATCH)
 			{
 				for (int j = 0; j < mProc->mCalledFunctions.Size(); j++)
 				{
 					if (!(mProc->mCalledFunctions[j]->mLinkerObject && (mProc->mCalledFunctions[j]->mLinkerObject->mFlags & LOBJF_STATIC_STACK)))
-						return false;
+						return true;
 				}
 			}
 		}
@@ -16304,7 +16310,13 @@ bool InterCodeBasicBlock::CheckStaticStack(void)
 			if (mInstructions[i]->mCode == IC_CALL || mInstructions[i]->mCode == IC_CALL_NATIVE)
 			{
 				if (mInstructions[i]->mSrc[0].mTemp >= 0 || !mInstructions[i]->mSrc[0].mLinkerObject)
-					return false;
+				{
+					for (int j = 0; j < mProc->mCalledFunctions.Size(); j++)
+					{
+						if (!(mProc->mCalledFunctions[j]->mLinkerObject && (mProc->mCalledFunctions[j]->mLinkerObject->mFlags & LOBJF_STATIC_STACK)))
+							return false;
+					}
+				}
 				else if (!(mInstructions[i]->mSrc[0].mLinkerObject->mFlags & LOBJF_STATIC_STACK))
 					return false;
 			}
@@ -16364,8 +16376,14 @@ void InterCodeBasicBlock::CollectStaticStack(LinkerObject* lobj, const GrowingVa
 
 		for (int i = 0; i < mInstructions.Size(); i++)
 		{
-			if ((mInstructions[i]->mCode == IC_CALL || mInstructions[i]->mCode == IC_CALL_NATIVE) && mInstructions[i]->mSrc[0].mLinkerObject->mStackSection)
-				lobj->mStackSection->mSections.Push(mInstructions[i]->mSrc[0].mLinkerObject->mStackSection);
+			if ((mInstructions[i]->mCode == IC_CALL || mInstructions[i]->mCode == IC_CALL_NATIVE))
+			{
+				if (mInstructions[i]->mSrc[0].mLinkerObject)
+				{
+					if (mInstructions[i]->mSrc[0].mLinkerObject->mStackSection)
+						lobj->mStackSection->mSections.Push(mInstructions[i]->mSrc[0].mLinkerObject->mStackSection);
+				}
+			}
 
 			if (mInstructions[i]->mCode == IC_LOAD)
 				ApplyStaticStack(mInstructions[i]->mSrc[0],localVars);
@@ -28592,6 +28610,15 @@ void InterCodeProcedure::Close(void)
 
 		ResetVisited();
 		mEntryBlock->CollectStaticStack(mLinkerObject, mLocalVars);
+
+		if (mCallsFunctionPointer)
+		{
+			for (int i = 0; i < mCalledFunctions.Size(); i++)
+			{
+				if (mCalledFunctions[i]->mLinkerObject && mCalledFunctions[i]->mLinkerObject->mStackSection)
+					mLinkerObject->mStackSection->mSections.Push(mCalledFunctions[i]->mLinkerObject->mStackSection);
+			}
+		}
 
 		GrowingInstructionPtrArray	pipa(nullptr);
 		ResetVisited();

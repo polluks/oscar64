@@ -50,7 +50,7 @@ public:
 	void InitLocalVariable(InterCodeProcedure* proc, Declaration* dec, int index);
 	void InitParameter(InterCodeProcedure* proc, Declaration* dec, int index);
 
-	void CompleteMainInit(void);
+	void CompleteMainInit(InterCodeModule* mod);
 protected:
 
 	Errors* mErrors;
