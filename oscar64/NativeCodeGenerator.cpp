@@ -42118,6 +42118,25 @@ bool NativeCodeBasicBlock::ValueForwarding(NativeCodeProcedure* proc, const Nati
 #endif
 
 #if 1
+			if (i + 1 < mIns.Size() && (mIns[i].mType == ASMIT_INC || mIns[i].mType == ASMIT_DEC) && mIns[i].mMode == ASMIM_ZERO_PAGE &&
+				mIns[i + 1].mMode == ASMIM_ZERO_PAGE && mIns[i + 1].mAddress == mIns[i].mAddress)
+			{
+				if (mIns[i + 1].mType == ASMIT_LDY && mNDataSet[CPU_REG_Y].mMode == NRDM_ZERO_PAGE && mNDataSet[CPU_REG_Y].mValue == mIns[i].mAddress)
+				{
+					mIns[i].mType = mIns[i].mType == ASMIT_INC ? ASMIT_INY : ASMIT_DEY; mIns[i].mMode = ASMIM_IMPLIED;
+					mIns[i + 1].mType = ASMIT_STY;
+					changed = true;
+				}
+				else if (mIns[i + 1].mType == ASMIT_LDX && mNDataSet[CPU_REG_X].mMode == NRDM_ZERO_PAGE && mNDataSet[CPU_REG_X].mValue == mIns[i].mAddress)
+				{
+					mIns[i].mType = mIns[i].mType == ASMIT_INC ? ASMIT_INX : ASMIT_DEX; mIns[i].mMode = ASMIM_IMPLIED;
+					mIns[i + 1].mType = ASMIT_STX;
+					changed = true;
+				}
+			}
+#endif
+
+#if 1
 			if (final &&
 				i + 1 < mIns.Size() && mIns[i].mType == ASMIT_LDA && mIns[i].mMode == ASMIM_ABSOLUTE &&
 				mIns[i + 1].IsCommutative() && mIns[i + 1].mMode == ASMIM_ZERO_PAGE && mNDataSet[CPU_REG_Y].mMode == NRDM_ZERO_PAGE && mNDataSet[CPU_REG_Y].mValue == mIns[i + 1].mAddress)
