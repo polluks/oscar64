@@ -21661,12 +21661,19 @@ bool NativeCodeBasicBlock::CrossBlockRegZPForward(int areg, int xreg, int yreg)
 				}
 			}
 
-			if (nareg && (ins.ChangesAccu() || ins.ChangesZeroPage(nareg)))
+			if (nareg >= 0 && (ins.ChangesAccu() || ins.ChangesZeroPage(nareg)))
 				nareg = -1;
-			if (nxreg && (ins.ChangesXReg() || ins.ChangesZeroPage(nxreg)))
+			if (nxreg >= 0 && (ins.ChangesXReg() || ins.ChangesZeroPage(nxreg)))
 				nxreg = -1;
-			if (nyreg && (ins.ChangesYReg() || ins.ChangesZeroPage(nyreg)))
+			if (nyreg >= 0 && (ins.ChangesYReg() || ins.ChangesZeroPage(nyreg)))
 				nyreg = -1;
+
+			if (areg >= 0 && ins.ChangesZeroPage(areg))
+				areg = -1;
+			if (xreg >= 0 && ins.ChangesZeroPage(xreg))
+				xreg = -1;
+			if (yreg >= 0 && ins.ChangesZeroPage(yreg))
+				yreg = -1;
 
 			if ((ins.mType == ASMIT_LDA || ins.mType == ASMIT_STA) && ins.mMode == ASMIM_ZERO_PAGE)
 				nareg = ins.mAddress;
@@ -29487,6 +29494,10 @@ bool NativeCodeBasicBlock::JoinTailCodeSequences(NativeCodeProcedure* proc, bool
 						else
 						{
 							mEntryBlocks[i]->mIns.Push(mIns[fi]);
+							if (mEntryBlocks[i]->mExitRequiredRegs[CPU_REG_X])
+								mEntryBlocks[i]->mIns[mEntryBlocks[i]->mIns.Size() - 1].mLive |= LIVE_CPU_REG_X;
+							if (mEntryBlocks[i]->mExitRequiredRegs[CPU_REG_Y])
+								mEntryBlocks[i]->mIns[mEntryBlocks[i]->mIns.Size() - 1].mLive |= LIVE_CPU_REG_Y;
 							mEntryBlocks[i]->mExitRequiredRegs += CPU_REG_A;
 						}
 					}
@@ -39164,6 +39175,57 @@ bool NativeCodeBasicBlock::FoldShiftORAIntoLoadImmUp(int at)
 		else if (mIns[i].ReferencesAccu())
 			return false;
 		i--;
+	}
+
+	return false;
+}
+
+
+// LDA zp
+// op  #
+// TAX
+
+bool NativeCodeBasicBlock::MoveLDAopTAXDown(int at)
+{
+	int addr = mIns[at + 0].mAddress;
+
+	int i = at + 3, di = 0;
+	while (i < mIns.Size())
+	{
+		if (mIns[i].ReferencesXReg() || mIns[i].ChangesXReg())
+			break;
+		if (mIns[at].MayBeChangedOnAddress(mIns[i]))
+			break;
+		if (!(mIns[i].mLive & (LIVE_CPU_REG_A | LIVE_CPU_REG_Z)))
+			di = i + 1;
+		i++;
+	}
+
+	if (di > at + 3)
+	{
+		if (mIns[di - 1].mType == ASMIT_TAY &&
+			mIns[di - 2].mMode == ASMIM_IMMEDIATE &&
+			mIns[di - 3].mType == ASMIT_LDA)
+		{
+			di -= 3;
+		}
+		else if (mIns[di - 1].mType == ASMIT_LDY || mIns[di - 1].mType == ASMIT_CLC || mIns[di - 1].mType == ASMIT_SEC)
+		{
+			di--;
+		}
+	}
+
+	if (di > at + 3)
+	{
+		int live = mIns[di - 1].mLive & (LIVE_CPU_REG_Y | LIVE_CPU_REG_C);
+		mIns[at + 0].mLive |= live;
+		mIns[at + 1].mLive |= live;
+		mIns[at + 2].mLive |= live;
+		mIns.Insert(di + 0, mIns[at + 0]);
+		mIns.Insert(di + 1, mIns[at + 1]);
+		mIns.Insert(di + 2, mIns[at + 2]);
+		mIns.Remove(at, 3);
+		return true;
 	}
 
 	return false;
@@ -51264,6 +51326,20 @@ bool NativeCodeBasicBlock::PeepHoleOptimizerShuffle(int pass)
 #endif
 
 #if 1
+	for (int i = 0; i + 4 < mIns.Size(); i++)
+	{
+		if (mIns[i].mType == ASMIT_LDA && (mIns[i].mMode == ASMIM_ZERO_PAGE || mIns[i].mMode == ASMIM_ABSOLUTE) &&
+			mIns[i + 1].IsLogic() && mIns[i + 1].mMode == ASMIM_IMMEDIATE &&
+			mIns[i + 2].mType == ASMIT_TAX && !(mIns[i + 2].mLive & LIVE_CPU_REG_A))
+		{
+			if (MoveLDAopTAXDown(i))
+				changed = true;
+		}
+	}
+	CheckLive();
+#endif
+
+#if 1
 	// move ORA #imm up a shift chain to an LDA #imm
 
 	for (int i = 1; i + 1 < mIns.Size(); i++)
@@ -54228,7 +54304,20 @@ bool NativeCodeBasicBlock::PeepHoleOptimizerIterate3(int i, int pass)
 		mIns[i + 0].mType = ASMIT_NOP; mIns[i + 0].mMode = ASMIM_IMPLIED;
 		return true;
 	}
-	
+
+	if (
+		pass >= 12 &&
+		mIns[i + 0].IsShift() && mIns[i + 0].mMode == ASMIM_ZERO_PAGE &&
+		mIns[i + 1].mType == ASMIT_LDA && mIns[i + 1].mMode != ASMIM_ABSOLUTE_X &&
+		mIns[i + 2].mType == ASMIT_LDX && mIns[i + 2].mMode == ASMIM_ZERO_PAGE && mIns[i + 2].mAddress == mIns[i + 0].mAddress && !(mIns[i + 2].mLive & LIVE_MEM))
+	{
+		mIns.Insert(i, NativeCodeInstruction(mIns[i].mIns, ASMIT_LDA, mIns[i + 0]));
+		mIns[i + 1].mMode = ASMIM_IMPLIED; mIns[i + 1].mLive |= LIVE_CPU_REG_A;
+		mIns[i + 3] = mIns[i + 2]; mIns[i + 3].mLive |= LIVE_CPU_REG_X;
+		mIns[i + 2].mType = ASMIT_TAX; mIns[i + 2].mMode = ASMIM_IMPLIED; mIns[i + 2].mLive |= LIVE_CPU_REG_X;
+		return true;
+	}
+
 	if (
 		pass >= 6 &&
 		mIns[i + 0].mType == ASMIT_ASL && mIns[i + 0].mMode == ASMIM_IMPLIED &&
@@ -62172,7 +62261,7 @@ void NativeCodeProcedure::Compile(InterCodeProcedure* proc)
 		
 	mInterProc->mLinkerObject->mNativeProc = this;
 
-	CheckFunc = !strcmp(mIdent->mString, "cuboids_init");
+	CheckFunc = !strcmp(mIdent->mString, "tk2_set_web_edge_color1");
 
 	int	nblocks = proc->mBlocks.Size();
 	tblocks = new NativeCodeBasicBlock * [nblocks];

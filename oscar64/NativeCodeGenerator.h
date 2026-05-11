@@ -614,6 +614,8 @@ public:
 	bool MoveSimpleADCToINCDECDown(int at);
 	bool MoveTAXADCSTADown(int at);
 
+	bool MoveLDAopTAXDown(int at);
+
 	bool MoveZeroPageCrossBlockUp(int at, const NativeCodeInstruction & lins, const NativeCodeInstruction & sins);
 	bool ShortcutCrossBlockMoves(NativeCodeProcedure* proc);
 	bool ShortcutCrossBlockCondition(void);
